@@ -23,4 +23,25 @@
 //   const rateLimit = require('express-rate-limit');
 //   module.exports = rateLimit({ ...options });
 
-module.exports = (req, res, next) => next(); // TODO: replace this stub
+const rateLimit = require('express-rate-limit');
+
+// In a multi-instance deployment, use rate-limit-redis with a shared Redis
+// store. The default in-memory store keeps separate counters per process, so
+// a load balancer can spread one client's requests across instances and give
+// them effectively N times the configured limit.
+module.exports = rateLimit({
+	windowMs: 15 * 60 * 1000,
+	max: 5,
+	standardHeaders: true,
+	legacyHeaders: false,
+	skipSuccessfulRequests: true,
+	handler: (req, res) => {
+		const resetTime = req.rateLimit && req.rateLimit.resetTime;
+		const secondsUntilReset = resetTime
+			? Math.ceil((new Date(resetTime).getTime() - Date.now()) / 1000)
+			: 15 * 60;
+
+		res.set('Retry-After', String(Math.max(1, secondsUntilReset)));
+		res.status(429).json({ error: 'Too many requests, please try again later.' });
+	},
+});
